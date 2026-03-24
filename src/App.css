@@ -138,6 +138,19 @@ html, body, #root {
 
 .content {
   flex: 1;
+  overflow: hidden;
+  display: flex;
+}
+
+.app-content-with-chat {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+  height: 100%;
+}
+
+.main-content {
+  flex: 1;
   overflow-y: auto;
   padding: 24px 32px;
 }

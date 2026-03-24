@@ -6,6 +6,7 @@ import { EmployeeList } from "./components/EmployeeList";
 import { EmployeeDetail } from "./components/EmployeeDetail";
 import { EmployeeForm } from "./components/EmployeeForm";
 import { DeleteConfirmDialog } from "./components/DeleteConfirmDialog";
+import { ChatPanel } from "./components/ChatPanel";
 
 export function App() {
   const [view, setView] = useState<AppView>({ page: "list" });
@@ -109,21 +110,26 @@ export function App() {
       onNavigateToList={nav.toList}
       onNavigateToAdd={nav.toAdd}
     >
-      {empState.error && (
-        <div className="error-banner">
-          <p>{empState.error}</p>
-          <button className="btn btn-small" onClick={empState.clearError}>
-            Dismiss
-          </button>
+      <div className="app-content-with-chat">
+        <div className="main-content">
+          {empState.error && (
+            <div className="error-banner">
+              <p>{empState.error}</p>
+              <button className="btn btn-small" onClick={empState.clearError}>
+                Dismiss
+              </button>
+            </div>
+          )}
+          {content}
+          <DeleteConfirmDialog
+            isOpen={deleteTarget !== null}
+            employeeName={deleteTarget?.name || ""}
+            onConfirm={handleDelete}
+            onCancel={() => setDeleteTarget(null)}
+          />
         </div>
-      )}
-      {content}
-      <DeleteConfirmDialog
-        isOpen={deleteTarget !== null}
-        employeeName={deleteTarget?.name || ""}
-        onConfirm={handleDelete}
-        onCancel={() => setDeleteTarget(null)}
-      />
+        <ChatPanel />
+      </div>
     </Layout>
   );
 }
