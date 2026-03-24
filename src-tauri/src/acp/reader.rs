@@ -90,23 +90,29 @@ pub async fn run_reader(
 
 /// Extract text from a `session/update` notification's params.
 ///
-/// Expected shape (from claude-code-acp bridge):
-/// ```json
-/// {
-///   "sessionId": "...",
-///   "update": {
-///     "sessionUpdate": "agent_message_chunk",
-///     "content": { "text": "Hello" }
-///   }
-/// }
-/// ```
+/// Supports both ACP field naming conventions:
+///   - `"sessionUpdate": "agent_message_chunk"` (Node.js bridge)
+///   - `"type": "AgentMessageChunk"` (ACP spec / Rust binary)
 fn extract_chunk_text(params: &Option<Value>) -> Option<String> {
     let params = params.as_ref()?;
     let update = params.get("update")?;
-    let update_type = update.get("sessionUpdate").and_then(|t| t.as_str())?;
-    if update_type != "agent_message_chunk" {
+
+    let is_chunk = update
+        .get("sessionUpdate")
+        .and_then(|t| t.as_str())
+        .map(|t| t == "agent_message_chunk")
+        .or_else(|| {
+            update
+                .get("type")
+                .and_then(|t| t.as_str())
+                .map(|t| t == "AgentMessageChunk")
+        })
+        .unwrap_or(false);
+
+    if !is_chunk {
         return None;
     }
+
     let text = update.get("content")?.get("text")?.as_str()?;
     if text.is_empty() {
         None

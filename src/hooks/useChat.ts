@@ -26,7 +26,7 @@ export function useChat() {
       } catch (e) {
         if (!cancelled) {
           setError(
-            `Could not connect to Claude. Make sure Claude Code CLI is installed and authenticated. Error: ${e}`
+            `Could not connect to Claude. Make sure claude-code-acp-rs is installed (cargo install claude-code-acp-rs) and ANTHROPIC_API_KEY is set. Error: ${e}`
           );
         }
       }

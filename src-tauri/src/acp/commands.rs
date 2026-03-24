@@ -110,23 +110,16 @@ pub async fn acp_initialize(
         }
     }
 
-    // 1. Spawn the persistent claude-code-acp process
-    // Preload script redirects console.log/info/debug → stderr so they
-    // don't pollute the JSON-RPC stdout channel.
-    let preload = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("acp-preload.cjs");
-
-    let mut child = Command::new("npx")
-        .arg("claude-code-acp")
-        .env("NODE_OPTIONS", format!("--require {}", preload.display()))
+    // 1. Spawn the persistent claude-code-acp-rs process
+    let mut child = Command::new("claude-code-acp-rs")
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::inherit())
         .spawn()
         .map_err(|e| {
             format!(
-                "Failed to start claude-code-acp. Make sure it is installed \
-                 (npm install -g claude-code-acp). Error: {}",
+                "Failed to start claude-code-acp-rs. Make sure it is installed \
+                 (cargo install claude-code-acp-rs) and ANTHROPIC_API_KEY is set. Error: {}",
                 e
             )
         })?;
