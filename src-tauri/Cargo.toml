@@ -1,12 +1,12 @@
 [package]
-name = "employee-data-manager"
+name = "weather-chatbot"
 version = "0.1.0"
-description = "Employee Data Manager"
+description = "Weather Chatbot powered by Claude"
 authors = ["you"]
 edition = "2021"
 
 [lib]
-name = "employee_data_manager_lib"
+name = "weather_chatbot_lib"
 crate-type = ["lib", "cdylib", "staticlib"]
 
 [build-dependencies]

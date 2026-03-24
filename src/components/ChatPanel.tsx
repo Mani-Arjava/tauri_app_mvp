@@ -2,9 +2,23 @@ import { useState, useRef, useEffect } from "react";
 import { useChat } from "../hooks/useChat";
 import { ChatMessage } from "./ChatMessage";
 
+const SUGGESTIONS = [
+  "What's the weather like in Tokyo right now?",
+  "Should I bring an umbrella in London this week?",
+  "What's the best time to visit Iceland?",
+  "How does El Nino affect global weather?",
+];
+
 export function ChatPanel(): React.JSX.Element {
-  const { messages, isConnected, isLoading, error, sendMessage, cancelResponse } =
-    useChat();
+  const {
+    messages,
+    isConnected,
+    isInitializing,
+    isLoading,
+    error,
+    sendMessage,
+    cancelResponse,
+  } = useChat();
   const [input, setInput] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -19,10 +33,14 @@ export function ChatPanel(): React.JSX.Element {
     setInput("");
   };
 
+  const handleSuggestion = (text: string) => {
+    sendMessage(text);
+  };
+
   return (
-    <div className="chat-panel">
+    <div className="weather-chat">
       <div className="chat-header">
-        <h3>Claude Chat</h3>
+        <h1>Weather Chatbot</h1>
         <span
           className={`chat-status ${isConnected ? "connected" : "disconnected"}`}
         >
@@ -31,11 +49,31 @@ export function ChatPanel(): React.JSX.Element {
       </div>
 
       <div className="chat-messages">
-        {messages.length === 0 && (
-          <div className="chat-empty">
-            Ask Claude anything about your employees or get help with the app.
+        {isInitializing && (
+          <div className="chat-init">
+            <div className="chat-spinner" />
+            <p>Setting up your weather assistant...</p>
           </div>
         )}
+
+        {!isInitializing && messages.length === 0 && (
+          <div className="chat-empty">
+            <p className="chat-empty-title">Ask me about the weather!</p>
+            <p className="chat-empty-subtitle">Try one of these:</p>
+            <div className="chat-suggestions">
+              {SUGGESTIONS.map((s) => (
+                <button
+                  key={s}
+                  className="chat-suggestion-chip"
+                  onClick={() => handleSuggestion(s)}
+                >
+                  {s}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
         {messages.map((msg) => (
           <ChatMessage key={msg.id} message={msg} />
         ))}
@@ -49,8 +87,14 @@ export function ChatPanel(): React.JSX.Element {
           type="text"
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          placeholder={isConnected ? "Ask Claude..." : "Connecting..."}
-          disabled={!isConnected}
+          placeholder={
+            isInitializing
+              ? "Setting up..."
+              : isConnected
+                ? "Ask about the weather..."
+                : "Connecting..."
+          }
+          disabled={!isConnected || isInitializing}
           className="chat-input"
         />
         {isLoading ? (
@@ -64,7 +108,7 @@ export function ChatPanel(): React.JSX.Element {
         ) : (
           <button
             type="submit"
-            disabled={!isConnected || !input.trim()}
+            disabled={!isConnected || isInitializing || !input.trim()}
             className="chat-send-btn"
           >
             Send

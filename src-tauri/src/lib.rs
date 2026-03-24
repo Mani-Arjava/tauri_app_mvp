@@ -2,18 +2,12 @@ use tauri::Manager;
 
 mod acp;
 
-#[tauri::command]
-fn greet(name: &str) -> String {
-    format!("Hello, {}! You've been greeted from Rust!", name)
-}
-
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
         .manage(acp::state::AcpState::new())
         .invoke_handler(tauri::generate_handler![
-            greet,
             acp::commands::acp_initialize,
             acp::commands::acp_send_prompt,
             acp::commands::acp_cancel,

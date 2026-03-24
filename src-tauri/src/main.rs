@@ -2,5 +2,5 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 fn main() {
-    employee_data_manager_lib::run()
+    weather_chatbot_lib::run()
 }

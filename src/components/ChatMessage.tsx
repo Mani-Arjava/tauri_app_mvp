@@ -9,7 +9,7 @@ export function ChatMessage({ message }: ChatMessageProps): React.JSX.Element {
     <div className={`chat-message chat-message-${message.role}`}>
       <div className="chat-message-header">
         <span className="chat-message-role">
-          {message.role === "user" ? "You" : "Claude"}
+          {message.role === "user" ? "You" : "Weather Bot"}
         </span>
         <span className="chat-message-time">
           {new Date(message.timestamp).toLocaleTimeString()}

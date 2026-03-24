@@ -181,7 +181,7 @@ pub async fn acp_initialize(
             "protocolVersion": 1,
             "clientCapabilities": {},
             "clientInfo": {
-                "name": "employee-data-manager",
+                "name": "weather-chatbot",
                 "version": "0.1.0"
             }
         })),

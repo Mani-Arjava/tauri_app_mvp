@@ -1,9 +1,9 @@
-# Employee Data Manager — CLAUDE.md
+# Weather Chatbot — CLAUDE.md
 
 ## Project Identity
-- **App name:** Employee Data Manager
+- **App name:** Weather Chatbot
 - **Stack:** Tauri v2 + React 19 + TypeScript + Vite
-- **Purpose:** Desktop employee data manager MVP — add, view, edit, delete employee records with photo upload, all persisted in localStorage
+- **Purpose:** Desktop weather chatbot powered by Claude via Rust ACP bridge
 
 ## Folder Structure
 
@@ -13,30 +13,21 @@ Tauri_mvp_app/
 ├── tsconfig.json
 ├── vite.config.ts
 ├── index.html
-├── public/
-│   └── placeholder-avatar.svg
 ├── src/
 │   ├── main.tsx
 │   ├── App.tsx
 │   ├── App.css
 │   ├── types/
-│   │   └── employee.ts
+│   │   └── chat.ts
 │   ├── utils/
-│   │   ├── id.ts
-│   │   ├── storage.ts
-│   │   └── image.ts
+│   │   └── id.ts
 │   ├── hooks/
-│   │   └── useEmployees.ts
+│   │   └── useChat.ts
 │   ├── components/
-│   │   ├── Layout.tsx
-│   │   ├── SearchBar.tsx
-│   │   ├── ImageUpload.tsx
-│   │   ├── EmployeeForm.tsx
-│   │   ├── EmployeeList.tsx
-│   │   ├── EmployeeDetail.tsx
-│   │   └── DeleteConfirmDialog.tsx
+│   │   ├── ChatPanel.tsx
+│   │   └── ChatMessage.tsx
 │   └── styles/
-│       └── components.css
+│       └── chat.css
 ├── src-tauri/          # Rust backend — do not modify unless explicitly asked
 └── docs/               # Documentation — do not modify unless explicitly asked
 ```
@@ -65,23 +56,23 @@ Tauri_mvp_app/
 ### CSS
 - Plain CSS with CSS variables
 - No CSS-in-JS, no Tailwind, no CSS frameworks
-- Variables defined in `src/App.css`, component styles in `src/styles/components.css`
+- Variables defined in `src/App.css`, component styles in `src/styles/chat.css`
 
 ### Dependencies
 - Zero npm packages beyond React + Tauri API + Vite tooling
 - No Redux, Zustand, Context API for state management
-- No react-router — navigation is state-based (`AppView` union type)
+- No react-router — single-view app
 - No form libraries — plain `useState`
 
-### Data & Storage
-- `localStorage` only, single key `"employee_data"`
-- Image handling: browser Canvas API for compression, base64 data URIs
+### Data & Communication
+- Chat via Rust ACP bridge (JSON-RPC over stdio to Claude)
+- System prompt sent silently during initialization
 - ID generation: timestamp + random string (no uuid package)
 
 ## Best Practices
 - One component per file, one responsibility per component
-- Validate at boundaries (form submission, file upload), trust internal code
-- No over-engineering: no abstractions for one-time use, no premature optimization
+- Validate at boundaries, trust internal code
+- No over-engineering: no abstractions for one-time use
 - Handle errors gracefully with user-friendly messages
 - Use semantic HTML elements where appropriate
 - Keep components focused and props minimal
