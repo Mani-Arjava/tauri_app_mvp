@@ -110,19 +110,44 @@ pub async fn acp_initialize(
         }
     }
 
-    // 1. Spawn the persistent claude-code-acp-rs process
-    let mut child = Command::new("claude-code-acp-rs")
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::inherit())
-        .spawn()
-        .map_err(|e| {
-            format!(
-                "Failed to start claude-code-acp-rs. Make sure it is installed \
-                 (cargo install claude-code-acp-rs) and ANTHROPIC_API_KEY is set. Error: {}",
-                e
-            )
-        })?;
+    // 1. Load .env if present, then decide which backend to spawn
+    let env_path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(".env");
+    let _ = dotenvy::from_path(&env_path);
+
+    let mut child = if let Ok(api_key) = std::env::var("ANTHROPIC_API_KEY") {
+        // Prefer the Rust binary with direct API access
+        Command::new("claude-code-acp-rs")
+            .env("ANTHROPIC_API_KEY", &api_key)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::inherit())
+            .spawn()
+            .map_err(|e| {
+                format!(
+                    "Failed to start claude-code-acp-rs. Install it with: \
+                     cargo install claude-code-acp-rs. Error: {}",
+                    e
+                )
+            })?
+    } else {
+        // Fall back to Node.js bridge using Claude Code CLI auth
+        let preload = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("acp-preload.cjs");
+        Command::new("npx")
+            .arg("claude-code-acp")
+            .env("NODE_OPTIONS", format!("--require {}", preload.display()))
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::inherit())
+            .spawn()
+            .map_err(|e| {
+                format!(
+                    "Failed to start claude-code-acp. Install Claude Code CLI and run \
+                     'claude login', or set ANTHROPIC_API_KEY in src-tauri/.env. Error: {}",
+                    e
+                )
+            })?
+    };
 
     let stdin = child
         .stdin

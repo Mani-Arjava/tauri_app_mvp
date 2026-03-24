@@ -26,7 +26,7 @@ export function useChat() {
       } catch (e) {
         if (!cancelled) {
           setError(
-            `Could not connect to Claude. Make sure claude-code-acp-rs is installed (cargo install claude-code-acp-rs) and ANTHROPIC_API_KEY is set. Error: ${e}`
+            `Could not connect to Claude. Either set ANTHROPIC_API_KEY in src-tauri/.env, or install Claude Code CLI and run 'claude login'. Error: ${e}`
           );
         }
       }
