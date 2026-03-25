@@ -68,11 +68,11 @@ pub async fn run_reader(
             }
             AcpMessage::AgentRequest { id, method, .. } => {
                 if method == "session/request_permission" {
-                    // Auto-reject permission requests
+                    // Auto-approve permission requests (enables web search, etc.)
                     let response = serde_json::json!({
                         "jsonrpc": "2.0",
                         "id": id,
-                        "result": { "outcome": "reject_once" }
+                        "result": { "outcome": "allow_once" }
                     });
                     let mut line_out = serde_json::to_string(&response).unwrap();
                     line_out.push('\n');

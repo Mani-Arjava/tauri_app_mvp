@@ -99,6 +99,7 @@ async fn send_notification(
 
 #[tauri::command]
 pub async fn acp_initialize(
+    mcp_servers: Option<Vec<Value>>,
     state: State<'_, AcpState>,
     app: AppHandle,
 ) -> Result<(), String> {
@@ -181,7 +182,7 @@ pub async fn acp_initialize(
             "protocolVersion": 1,
             "clientCapabilities": {},
             "clientInfo": {
-                "name": "weather-chatbot",
+                "name": "agent-creator",
                 "version": "0.1.0"
             }
         })),
@@ -199,11 +200,10 @@ pub async fn acp_initialize(
         &next_id,
         "session/new",
         Some(serde_json::json!({
-            "cwd": std::env::current_dir()
-                .unwrap_or_default()
-                .to_string_lossy()
-                .to_string(),
-            "mcpServers": []
+            "cwd": std::env::var("HOME")
+                .or_else(|_| std::env::var("USERPROFILE"))
+                .unwrap_or_else(|_| "/tmp".to_string()),
+            "mcpServers": mcp_servers.clone().unwrap_or_default()
         })),
     )
     .await?;

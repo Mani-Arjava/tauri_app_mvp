@@ -2,5 +2,5 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 fn main() {
-    weather_chatbot_lib::run()
+    agent_creator_lib::run()
 }

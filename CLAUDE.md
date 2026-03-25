@@ -1,9 +1,9 @@
-# Weather Chatbot — CLAUDE.md
+# Agent Creator — CLAUDE.md
 
 ## Project Identity
-- **App name:** Weather Chatbot
-- **Stack:** Tauri v2 + React 19 + TypeScript + Vite
-- **Purpose:** Desktop weather chatbot powered by Claude via Rust ACP bridge
+- **App name:** Agent Creator
+- **Stack:** Tauri v2 + React 19 + TypeScript + Vite + shadcn/ui + Tailwind CSS
+- **Purpose:** Desktop app for creating and running custom Claude agents via ACP
 
 ## Folder Structure
 
@@ -12,33 +12,52 @@ Tauri_mvp_app/
 ├── package.json
 ├── tsconfig.json
 ├── vite.config.ts
+├── components.json
 ├── index.html
 ├── src/
 │   ├── main.tsx
+│   ├── index.css
 │   ├── App.tsx
-│   ├── App.css
+│   ├── lib/
+│   │   └── utils.ts
 │   ├── types/
-│   │   └── chat.ts
+│   │   ├── agent.ts
+│   │   └── task.ts
 │   ├── utils/
 │   │   └── id.ts
 │   ├── hooks/
-│   │   └── useChat.ts
+│   │   ├── useAgents.ts
+│   │   └── useTaskRunner.ts
 │   ├── components/
-│   │   ├── ChatPanel.tsx
-│   │   └── ChatMessage.tsx
-│   └── styles/
-│       └── chat.css
-├── src-tauri/          # Rust backend — do not modify unless explicitly asked
-└── docs/               # Documentation — do not modify unless explicitly asked
+│   │   ├── ui/              (shadcn primitives)
+│   │   ├── agents/
+│   │   │   ├── AgentList.tsx
+│   │   │   ├── AgentCard.tsx
+│   │   │   ├── AgentFormDialog.tsx
+│   │   │   └── McpServerFields.tsx
+│   │   └── tasks/
+│   │       ├── TaskRunner.tsx
+│   │       └── TaskResultCard.tsx
+├── src-tauri/
+│   ├── src/
+│   │   ├── main.rs
+│   │   ├── lib.rs
+│   │   ├── acp/            (ACP bridge — JSON-RPC over stdio)
+│   │   └── agents/         (Agent config CRUD — JSON file storage)
+│   └── ...
+└── docs/
 ```
 
 ### Directory Rules
 - `src/types/` — TypeScript interfaces and type definitions only
 - `src/utils/` — pure utility functions (no React, no hooks, no side effects)
 - `src/hooks/` — custom React hooks only
-- `src/components/` — React components (`.tsx` files)
-- `src/styles/` — CSS files
-- `src-tauri/` — Rust backend (do not modify unless explicitly asked)
+- `src/lib/` — shared utilities (cn helper)
+- `src/components/ui/` — shadcn/ui primitive components (do not modify directly)
+- `src/components/agents/` — agent management components
+- `src/components/tasks/` — task execution components
+- `src-tauri/src/acp/` — Rust ACP bridge (do not modify unless explicitly asked)
+- `src-tauri/src/agents/` — Rust agent config storage
 - `docs/` — project documentation (do not modify unless explicitly asked)
 
 ## Coding Standards
@@ -47,26 +66,32 @@ Tauri_mvp_app/
 - Strict mode enabled
 - Explicit types on all exports
 - No `any` type — use proper types or `unknown`
+- Path aliases: `@/*` maps to `./src/*`
 
 ### React
 - Functional components only
 - Named exports (no default exports)
 - Props interfaces defined inline or co-located with component
 
-### CSS
-- Plain CSS with CSS variables
-- No CSS-in-JS, no Tailwind, no CSS frameworks
-- Variables defined in `src/App.css`, component styles in `src/styles/chat.css`
+### Styling
+- Tailwind CSS via `@tailwindcss/vite` plugin
+- shadcn/ui components for all UI primitives
+- Use `cn()` from `@/lib/utils` for conditional class merging
+- No inline styles except dynamic values (e.g., agent.color)
+- CSS variables defined in `src/index.css`
 
 ### Dependencies
-- Zero npm packages beyond React + Tauri API + Vite tooling
+- shadcn/ui + Radix UI for components
+- Tailwind CSS for styling
+- lucide-react for icons
 - No Redux, Zustand, Context API for state management
-- No react-router — single-view app
+- No react-router — state-based view switching with Tabs
 - No form libraries — plain `useState`
 
 ### Data & Communication
+- Agent configs stored as JSON files in Tauri app_data_dir/agents/
 - Chat via Rust ACP bridge (JSON-RPC over stdio to Claude)
-- System prompt sent silently during initialization
+- System prompt sent silently during task initialization
 - ID generation: timestamp + random string (no uuid package)
 
 ## Best Practices
@@ -76,6 +101,3 @@ Tauri_mvp_app/
 - Handle errors gracefully with user-friendly messages
 - Use semantic HTML elements where appropriate
 - Keep components focused and props minimal
-
-## Planning Doc Reference
-- Full technical spec: `docs/05_employee_data_upload_plan.md`

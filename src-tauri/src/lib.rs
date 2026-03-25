@@ -1,6 +1,7 @@
 use tauri::Manager;
 
 mod acp;
+mod agents;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -12,6 +13,10 @@ pub fn run() {
             acp::commands::acp_send_prompt,
             acp::commands::acp_cancel,
             acp::commands::acp_shutdown,
+            agents::commands::agent_list,
+            agents::commands::agent_create,
+            agents::commands::agent_update,
+            agents::commands::agent_delete,
         ])
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::Destroyed = event {
