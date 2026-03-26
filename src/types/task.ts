@@ -3,6 +3,8 @@ export interface TaskResult {
   agentId: string;
   agentName: string;
   agentColor: string;
+  agentModel: string;
+  agentMcpServers: string[];
   taskDescription: string;
   response: string;
   isStreaming: boolean;

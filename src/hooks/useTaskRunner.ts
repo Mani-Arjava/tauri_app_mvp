@@ -79,6 +79,7 @@ export function useTaskRunner(): UseTaskRunnerReturn {
           args: s.args,
           env: s.env,
         })),
+        model: agent.model || null,
       });
 
       const taskPrompt = agent.systemPrompt?.trim()
@@ -90,6 +91,8 @@ export function useTaskRunner(): UseTaskRunnerReturn {
         agentId: agent.id,
         agentName: agent.name,
         agentColor: agent.color,
+        agentModel: agent.model,
+        agentMcpServers: agent.mcpServers.map((s) => s.name),
         taskDescription,
         response: "",
         isStreaming: true,

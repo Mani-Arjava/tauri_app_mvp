@@ -100,6 +100,7 @@ async fn send_notification(
 #[tauri::command]
 pub async fn acp_initialize(
     mcp_servers: Option<Vec<Value>>,
+    model: Option<String>,
     state: State<'_, AcpState>,
     app: AppHandle,
 ) -> Result<(), String> {
@@ -199,12 +200,18 @@ pub async fn acp_initialize(
         &pending,
         &next_id,
         "session/new",
-        Some(serde_json::json!({
-            "cwd": std::env::var("HOME")
-                .or_else(|_| std::env::var("USERPROFILE"))
-                .unwrap_or_else(|_| "/tmp".to_string()),
-            "mcpServers": mcp_servers.clone().unwrap_or_default()
-        })),
+        Some({
+            let mut params = serde_json::json!({
+                "cwd": std::env::var("HOME")
+                    .or_else(|_| std::env::var("USERPROFILE"))
+                    .unwrap_or_else(|_| "/tmp".to_string()),
+                "mcpServers": mcp_servers.clone().unwrap_or_default()
+            });
+            if let Some(m) = model.filter(|s| !s.trim().is_empty()) {
+                params["model"] = serde_json::Value::String(m);
+            }
+            params
+        }),
     )
     .await?;
 

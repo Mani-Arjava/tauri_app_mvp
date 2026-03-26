@@ -11,10 +11,14 @@ export function TaskResultCard({ result }: TaskResultCardProps): React.JSX.Eleme
     <Card className={result.error ? "border-destructive/50" : ""}>
       <CardHeader className="pb-2">
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <Badge style={{ backgroundColor: result.agentColor, color: "#fff" }}>
               {result.agentName}
             </Badge>
+            <Badge variant="secondary" className="text-xs">{result.agentModel}</Badge>
+            {result.agentMcpServers.map((name) => (
+              <Badge key={name} variant="outline" className="text-xs">{name}</Badge>
+            ))}
             {result.isStreaming && (
               <span className="flex h-2 w-2">
                 <span className="animate-ping absolute h-2 w-2 rounded-full bg-primary opacity-75" />
