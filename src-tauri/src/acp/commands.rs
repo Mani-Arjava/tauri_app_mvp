@@ -112,44 +112,50 @@ pub async fn acp_initialize(
         }
     }
 
-    // 1. Load .env if present, then decide which backend to spawn
-    let env_path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(".env");
-    let _ = dotenvy::from_path(&env_path);
+    // 1. Spawn claude-code-acp via Claude Code subscription auth.
+    //
+    // NOTE: API key path is commented out — re-enable when claude-code-acp-rs
+    // model selection is verified. With subscription auth the `model` field in
+    // session/new is ignored; Claude Code uses its own default model.
+    //
+    // To re-enable API key path:
+    //   1. Add ANTHROPIC_API_KEY to src-tauri/.env
+    //   2. Install: cargo install claude-code-acp-rs
+    //   3. Uncomment the block below and wrap in if/else on ANTHROPIC_API_KEY
+    //
+    // let env_path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(".env");
+    // let _ = dotenvy::from_path(&env_path);
+    // if let Ok(api_key) = std::env::var("ANTHROPIC_API_KEY") {
+    //     Command::new("claude-code-acp-rs")
+    //         .env("ANTHROPIC_API_KEY", &api_key)
+    //         .stdin(Stdio::piped())
+    //         .stdout(Stdio::piped())
+    //         .stderr(Stdio::inherit())
+    //         .spawn()
+    //         .map_err(|e| format!("Failed to start claude-code-acp-rs: {}", e))?
+    // } else { ... }
 
-    let mut child = if let Ok(api_key) = std::env::var("ANTHROPIC_API_KEY") {
-        // Prefer the Rust binary with direct API access
-        Command::new("claude-code-acp-rs")
-            .env("ANTHROPIC_API_KEY", &api_key)
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::inherit())
-            .spawn()
-            .map_err(|e| {
-                format!(
-                    "Failed to start claude-code-acp-rs. Install it with: \
-                     cargo install claude-code-acp-rs. Error: {}",
-                    e
-                )
-            })?
-    } else {
-        // Fall back to Node.js bridge using Claude Code CLI auth
-        let preload = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("acp-preload.cjs");
-        Command::new("npx")
-            .arg("claude-code-acp")
-            .env("NODE_OPTIONS", format!("--require {}", preload.display()))
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::inherit())
-            .spawn()
-            .map_err(|e| {
-                format!(
-                    "Failed to start claude-code-acp. Install Claude Code CLI and run \
-                     'claude login', or set ANTHROPIC_API_KEY in src-tauri/.env. Error: {}",
-                    e
-                )
-            })?
-    };
+    let preload = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("acp-preload.cjs");
+    let mut cmd = Command::new("npx");
+    cmd.arg("claude-code-acp")
+        .env("NODE_OPTIONS", format!("--require {}", preload.display()))
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::inherit());
+
+    // Pass model via ANTHROPIC_MODEL env var (official: code.claude.com/docs/en/model-config)
+    if let Some(m) = model.as_deref().filter(|s| !s.trim().is_empty()) {
+        cmd.env("ANTHROPIC_MODEL", m);
+    }
+
+    let mut child = cmd.spawn().map_err(|e| {
+        format!(
+            "Failed to start claude-code-acp. Install Claude Code CLI and run \
+             'claude login'. Error: {}",
+            e
+        )
+    })?;
 
     let stdin = child
         .stdin
@@ -200,18 +206,12 @@ pub async fn acp_initialize(
         &pending,
         &next_id,
         "session/new",
-        Some({
-            let mut params = serde_json::json!({
-                "cwd": std::env::var("HOME")
-                    .or_else(|_| std::env::var("USERPROFILE"))
-                    .unwrap_or_else(|_| "/tmp".to_string()),
-                "mcpServers": mcp_servers.clone().unwrap_or_default()
-            });
-            if let Some(m) = model.filter(|s| !s.trim().is_empty()) {
-                params["model"] = serde_json::Value::String(m);
-            }
-            params
-        }),
+        Some(serde_json::json!({
+            "cwd": std::env::var("HOME")
+                .or_else(|_| std::env::var("USERPROFILE"))
+                .unwrap_or_else(|_| "/tmp".to_string()),
+            "mcpServers": mcp_servers.clone().unwrap_or_default()
+        })),
     )
     .await?;
 
