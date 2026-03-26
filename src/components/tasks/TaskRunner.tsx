@@ -23,7 +23,7 @@ export function TaskRunner({ agents }: TaskRunnerProps): React.JSX.Element {
   const [selectedAgentId, setSelectedAgentId] = useState<string>("");
   const [taskInput, setTaskInput] = useState<string>("");
   const [projectPath, setProjectPath] = useState<string | null>(null);
-  const { results, isRunning, error, runTask, cancelTask, clearResults } = useTaskRunner();
+  const { results, isRunning, error, runTask, cancelTask, clearResults } = useTaskRunner(projectPath);
 
   const visibleAgents = agents.filter(
     (a) =>

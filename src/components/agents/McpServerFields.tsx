@@ -1,9 +1,11 @@
-import { Plus, X } from "lucide-react";
+import { useState } from "react";
+import { Plus, X, FileJson } from "lucide-react";
 import type { McpServerConfig } from "@/types/agent";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
+import { Textarea } from "@/components/ui/textarea";
 
 interface McpServerFieldsProps {
   servers: McpServerConfig[];
@@ -14,7 +16,42 @@ function emptyServer(): McpServerConfig {
   return { name: "", command: "", args: [], env: {} };
 }
 
+function parseJsonServers(raw: string): McpServerConfig[] {
+  const obj = JSON.parse(raw) as Record<string, unknown>;
+  const map = (obj.mcpServers ?? obj) as Record<string, unknown>;
+  return Object.entries(map).map(([name, cfg]) => {
+    const c = cfg as Record<string, unknown>;
+    return {
+      name,
+      command: String(c.command ?? ""),
+      args: Array.isArray(c.args) ? c.args.map(String) : [],
+      env:
+        typeof c.env === "object" && c.env !== null
+          ? Object.fromEntries(
+              Object.entries(c.env as Record<string, unknown>).map(([k, v]) => [k, String(v)])
+            )
+          : {},
+    };
+  });
+}
+
 export function McpServerFields({ servers, onChange }: McpServerFieldsProps): React.JSX.Element {
+  const [importOpen, setImportOpen] = useState(false);
+  const [importJson, setImportJson] = useState("");
+  const [importError, setImportError] = useState("");
+
+  const handleParseImport = () => {
+    try {
+      const parsed = parseJsonServers(importJson);
+      onChange([...servers, ...parsed]);
+      setImportOpen(false);
+      setImportJson("");
+      setImportError("");
+    } catch {
+      setImportError("Invalid JSON — check format");
+    }
+  };
+
   const addServer = () => {
     onChange([...servers, emptyServer()]);
   };
@@ -69,11 +106,48 @@ export function McpServerFields({ servers, onChange }: McpServerFieldsProps): Re
     <div className="space-y-3">
       <div className="flex items-center justify-between">
         <Label>MCP Servers</Label>
-        <Button type="button" variant="outline" size="sm" onClick={addServer}>
-          <Plus className="h-3 w-3 mr-1" />
-          Add Server
-        </Button>
+        <div className="flex gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => { setImportOpen((o) => !o); setImportError(""); }}
+          >
+            <FileJson className="h-3 w-3 mr-1" />
+            Import JSON
+          </Button>
+          <Button type="button" variant="outline" size="sm" onClick={addServer}>
+            <Plus className="h-3 w-3 mr-1" />
+            Add Server
+          </Button>
+        </div>
       </div>
+
+      {importOpen && (
+        <div className="border rounded-md p-3 space-y-2 bg-muted/30">
+          <p className="text-xs text-muted-foreground">
+            Paste a Claude Code MCP JSON config (with or without the <code className="font-mono">mcpServers</code> wrapper).
+          </p>
+          <Textarea
+            value={importJson}
+            onChange={(e) => { setImportJson(e.target.value); setImportError(""); }}
+            placeholder={'{ "mcpServers": { "shadcn": { "command": "npx", "args": ["shadcn@latest", "mcp"] } } }'}
+            rows={4}
+            className="font-mono text-xs"
+          />
+          {importError && (
+            <p className="text-xs text-destructive">{importError}</p>
+          )}
+          <div className="flex gap-2">
+            <Button type="button" size="sm" onClick={handleParseImport} disabled={!importJson.trim()}>
+              Parse & Import
+            </Button>
+            <Button type="button" variant="outline" size="sm" onClick={() => { setImportOpen(false); setImportJson(""); setImportError(""); }}>
+              Cancel
+            </Button>
+          </div>
+        </div>
+      )}
 
       {servers.map((server, idx) => (
         <div key={idx} className="border rounded-md p-3 space-y-2">

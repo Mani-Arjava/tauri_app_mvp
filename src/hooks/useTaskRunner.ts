@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import type { AgentConfig } from "../types/agent";
@@ -19,10 +19,42 @@ interface UseTaskRunnerReturn {
   clearResults: () => void;
 }
 
-export function useTaskRunner(): UseTaskRunnerReturn {
+export function useTaskRunner(projectPath: string | null): UseTaskRunnerReturn {
   const [results, setResults] = useState<TaskResult[]>([]);
   const [isRunning, setIsRunning] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
+  const prevResultsRef = useRef<TaskResult[]>([]);
+
+  // Load task history when projectPath changes
+  useEffect(() => {
+    if (projectPath) {
+      invoke<TaskResult[]>("task_list", { projectPath })
+        .then((records) => {
+          setResults(records.map((r) => ({ ...r, isStreaming: false })));
+        })
+        .catch(() => setResults([]));
+    } else {
+      setResults([]);
+    }
+  }, [projectPath]);
+
+  // Save completed task to disk when a result transitions from streaming to done
+  useEffect(() => {
+    if (!projectPath) {
+      prevResultsRef.current = results;
+      return;
+    }
+    const prev = prevResultsRef.current;
+    if (results.length > 0 && prev.length > 0) {
+      const last = results[results.length - 1];
+      const prevLast = prev[prev.length - 1];
+      if (prevLast?.isStreaming && !last.isStreaming) {
+        const { isStreaming: _omit, ...record } = last;
+        invoke("task_save", { projectPath, record }).catch(() => {});
+      }
+    }
+    prevResultsRef.current = results;
+  }, [results, projectPath]);
 
   useEffect(() => {
     const unlistenChunk = listen<ChatChunkPayload>("acp:message-chunk", (event) => {
@@ -58,7 +90,7 @@ export function useTaskRunner(): UseTaskRunnerReturn {
     };
   }, []);
 
-  const runTask = useCallback(async (agent: AgentConfig, taskDescription: string, projectPath: string | null): Promise<void> => {
+  const runTask = useCallback(async (agent: AgentConfig, taskDescription: string, taskProjectPath: string | null): Promise<void> => {
     setIsRunning(true);
     setError(null);
 
@@ -69,9 +101,6 @@ export function useTaskRunner(): UseTaskRunnerReturn {
         // Ignore errors from shutting down a non-existent session
       }
 
-      // Initialize ACP with this agent's MCP servers and system prompt.
-      // The Rust side sends the system prompt silently (suppressing events)
-      // and only returns once the session is fully ready.
       await invoke("acp_initialize", {
         mcpServers: agent.mcpServers.map((s) => ({
           name: s.name,
@@ -80,7 +109,7 @@ export function useTaskRunner(): UseTaskRunnerReturn {
           env: s.env,
         })),
         model: agent.model || null,
-        cwd: projectPath || null,
+        cwd: taskProjectPath || null,
       });
 
       const taskPrompt = agent.systemPrompt?.trim()
@@ -123,8 +152,11 @@ export function useTaskRunner(): UseTaskRunnerReturn {
   }, []);
 
   const clearResults = useCallback((): void => {
+    if (projectPath) {
+      invoke("task_clear", { projectPath }).catch(() => {});
+    }
     setResults([]);
-  }, []);
+  }, [projectPath]);
 
   return { results, isRunning, error, runTask, cancelTask, clearResults };
 }

@@ -1,7 +1,8 @@
 use tauri::AppHandle;
 
 use super::storage;
-use super::types::AgentConfig;
+use super::types::{AgentConfig, AgentScope};
+use crate::projects;
 
 #[tauri::command]
 pub fn agent_list(app: AppHandle) -> Result<Vec<AgentConfig>, String> {
@@ -17,6 +18,12 @@ pub fn agent_create(
     config.created_at = chrono_now();
     storage::save_agent(&app, &config)?;
     storage::write_agent_md(&config)?;
+    // Auto-register the project path when creating a project-scoped agent
+    if config.scope == AgentScope::Project {
+        if let Some(ref path) = config.project_path {
+            let _ = projects::storage::add_project(&app, path);
+        }
+    }
     Ok(config)
 }
 

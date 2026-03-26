@@ -138,18 +138,20 @@ fn build_agent_md(config: &AgentConfig) -> String {
     if !config.mcp_servers.is_empty() {
         lines.push("mcpServers:".to_string());
         for server in &config.mcp_servers {
-            let cmd_line = if server.args.is_empty() {
-                server.command.clone()
-            } else {
-                format!("{} {}", server.command, server.args.join(" "))
-            };
-            lines.push(format!("  - name: {}", server.name));
-            lines.push(format!("    command: {}", cmd_line));
-            let env_entries: Vec<String> = server.env.iter()
-                .map(|(k, v)| format!("{}={}", k, v))
+            // YAML object key (not list item) — Claude Code format
+            lines.push(format!("  {}:", server.name));
+            lines.push("    type: stdio".to_string());
+            lines.push(format!("    command: {}", server.command));
+            // args as inline JSON array with spaces: ["arg1", "arg2"]
+            let args_items: Vec<String> = server.args.iter()
+                .map(|a| format!("\"{}\"", a))
                 .collect();
-            if !env_entries.is_empty() {
-                lines.push(format!("    env: {}", env_entries.join(", ")));
+            lines.push(format!("    args: [{}]", args_items.join(", ")));
+            if !server.env.is_empty() {
+                lines.push("    env:".to_string());
+                for (k, v) in &server.env {
+                    lines.push(format!("      {}: {}", k, v));
+                }
             }
         }
     }

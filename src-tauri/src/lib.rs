@@ -2,6 +2,8 @@ use tauri::Manager;
 
 mod acp;
 mod agents;
+mod projects;
+mod tasks;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -19,6 +21,12 @@ pub fn run() {
             agents::commands::agent_update,
             agents::commands::agent_delete,
             agents::commands::agent_list_for_project,
+            tasks::commands::task_save,
+            tasks::commands::task_list,
+            tasks::commands::task_clear,
+            projects::commands::project_list,
+            projects::commands::project_add,
+            projects::commands::project_remove,
         ])
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::Destroyed = event {

@@ -209,6 +209,30 @@ pub async fn acp_initialize(
                 .or_else(|_| std::env::var("USERPROFILE"))
                 .unwrap_or_else(|_| "/tmp".to_string())
         });
+    // Build mcpServers array; convert env from {KEY:VAL} object to [{name,value}] array
+    // (claude-code-acp Zod schema requires env as Array<{name,value}>, not a plain object)
+    let mcp_array: Vec<Value> = mcp_servers
+        .unwrap_or_default()
+        .into_iter()
+        .map(|server| {
+            let name = server.get("name").and_then(|v| v.as_str()).unwrap_or("").to_string();
+            let command = server.get("command").and_then(|v| v.as_str()).unwrap_or("").to_string();
+            let args: Vec<Value> = server.get("args")
+                .and_then(|v| v.as_array())
+                .cloned()
+                .unwrap_or_default();
+            let env: Vec<Value> = server.get("env")
+                .and_then(|v| v.as_object())
+                .map(|obj| {
+                    obj.iter()
+                        .map(|(k, v)| serde_json::json!({"name": k, "value": v.as_str().unwrap_or("")}))
+                        .collect()
+                })
+                .unwrap_or_default();
+            serde_json::json!({ "name": name, "command": command, "args": args, "env": env })
+        })
+        .collect();
+
     let rx = send_request(
         &stdin,
         &pending,
@@ -216,7 +240,7 @@ pub async fn acp_initialize(
         "session/new",
         Some(serde_json::json!({
             "cwd": resolved_cwd,
-            "mcpServers": mcp_servers.clone().unwrap_or_default()
+            "mcpServers": mcp_array
         })),
     )
     .await?;
