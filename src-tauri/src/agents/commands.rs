@@ -16,6 +16,7 @@ pub fn agent_create(
     config.id = uuid::Uuid::new_v4().to_string();
     config.created_at = chrono_now();
     storage::save_agent(&app, &config)?;
+    storage::write_agent_md(&config)?;
     Ok(config)
 }
 
@@ -24,13 +25,26 @@ pub fn agent_update(
     config: AgentConfig,
     app: AppHandle,
 ) -> Result<AgentConfig, String> {
+    // Load old config to handle renames (delete old slug, write new slug)
+    if let Ok(old) = storage::load_agent(&app, &config.id) {
+        let _ = storage::delete_agent_md(&old); // best-effort: ignore if old file missing
+    }
     storage::save_agent(&app, &config)?;
+    storage::write_agent_md(&config)?;
     Ok(config)
 }
 
 #[tauri::command]
 pub fn agent_delete(id: String, app: AppHandle) -> Result<(), String> {
+    if let Ok(config) = storage::load_agent(&app, &id) {
+        let _ = storage::delete_agent_md(&config); // best-effort
+    }
     storage::delete_agent(&app, &id)
+}
+
+#[tauri::command]
+pub fn agent_list_for_project(project_path: String, app: AppHandle) -> Result<Vec<AgentConfig>, String> {
+    storage::list_agents_for_project(&app, &project_path)
 }
 
 /// Returns the current UTC time as an ISO 8601 string.

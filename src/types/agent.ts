@@ -15,4 +15,6 @@ export interface AgentConfig {
   color: string;
   systemPrompt: string;
   createdAt: string;
+  scope: "global" | "project";
+  projectPath: string | null;
 }

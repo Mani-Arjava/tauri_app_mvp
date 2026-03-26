@@ -4,6 +4,7 @@ import type { AgentConfig } from "@/types/agent";
 import { Button } from "@/components/ui/button";
 import { AgentCard } from "./AgentCard";
 import { AgentFormDialog } from "./AgentFormDialog";
+import { ScopePickerDialog } from "./ScopePickerDialog";
 
 interface AgentListProps {
   agents: AgentConfig[];
@@ -24,9 +25,19 @@ export function AgentList({
 }: AgentListProps): React.JSX.Element {
   const [formOpen, setFormOpen] = useState(false);
   const [editingAgent, setEditingAgent] = useState<AgentConfig | undefined>();
+  const [scopePickerOpen, setScopePickerOpen] = useState(false);
+  const [pendingScope, setPendingScope] = useState<"global" | "project">("global");
+  const [pendingProjectPath, setPendingProjectPath] = useState<string | null>(null);
 
   const handleCreate = () => {
     setEditingAgent(undefined);
+    setScopePickerOpen(true);
+  };
+
+  const handleScopeConfirmed = (scope: "global" | "project", path: string | null) => {
+    setPendingScope(scope);
+    setPendingProjectPath(path);
+    setScopePickerOpen(false);
     setFormOpen(true);
   };
 
@@ -90,11 +101,17 @@ export function AgentList({
         </div>
       )}
 
+      <ScopePickerDialog
+        open={scopePickerOpen}
+        onOpenChange={setScopePickerOpen}
+        onConfirm={handleScopeConfirmed}
+      />
       <AgentFormDialog
         open={formOpen}
         onOpenChange={setFormOpen}
         agent={editingAgent}
         onSave={handleSave}
+        {...(!editingAgent && { initialScope: pendingScope, initialProjectPath: pendingProjectPath })}
       />
     </div>
   );

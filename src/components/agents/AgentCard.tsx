@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Pencil, Trash2, FileText } from "lucide-react";
+import { Pencil, Trash2, FileText, Globe, FolderOpen } from "lucide-react";
 import type { AgentConfig } from "@/types/agent";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -88,6 +88,17 @@ export function AgentCard({ agent, onEdit, onDelete }: AgentCardProps): React.JS
             {agent.mcpServers.length > 0 && (
               <Badge variant="outline" className="text-xs">
                 {agent.mcpServers.length} MCP server{agent.mcpServers.length > 1 ? "s" : ""}
+              </Badge>
+            )}
+            {agent.scope === "project" && agent.projectPath ? (
+              <Badge variant="outline" className="text-xs flex items-center gap-1 font-mono max-w-[140px]">
+                <FolderOpen className="h-3 w-3 shrink-0" />
+                <span className="truncate">{agent.projectPath.split("/").pop()}</span>
+              </Badge>
+            ) : (
+              <Badge variant="outline" className="text-xs flex items-center gap-1">
+                <Globe className="h-3 w-3" />
+                Global
               </Badge>
             )}
           </div>

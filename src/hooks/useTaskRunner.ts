@@ -14,7 +14,7 @@ interface UseTaskRunnerReturn {
   results: TaskResult[];
   isRunning: boolean;
   error: string | null;
-  runTask: (agent: AgentConfig, taskDescription: string) => Promise<void>;
+  runTask: (agent: AgentConfig, taskDescription: string, projectPath: string | null) => Promise<void>;
   cancelTask: () => Promise<void>;
   clearResults: () => void;
 }
@@ -58,7 +58,7 @@ export function useTaskRunner(): UseTaskRunnerReturn {
     };
   }, []);
 
-  const runTask = useCallback(async (agent: AgentConfig, taskDescription: string): Promise<void> => {
+  const runTask = useCallback(async (agent: AgentConfig, taskDescription: string, projectPath: string | null): Promise<void> => {
     setIsRunning(true);
     setError(null);
 
@@ -80,6 +80,7 @@ export function useTaskRunner(): UseTaskRunnerReturn {
           env: s.env,
         })),
         model: agent.model || null,
+        cwd: projectPath || null,
       });
 
       const taskPrompt = agent.systemPrompt?.trim()

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import type { AgentConfig } from "@/types/agent";
 import { useTaskRunner } from "@/hooks/useTaskRunner";
 import { Button } from "@/components/ui/button";
@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/select";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { TaskResultCard } from "./TaskResultCard";
+import { ProjectPathSelector } from "./ProjectPathSelector";
 
 interface TaskRunnerProps {
   agents: AgentConfig[];
@@ -21,14 +22,27 @@ interface TaskRunnerProps {
 export function TaskRunner({ agents }: TaskRunnerProps): React.JSX.Element {
   const [selectedAgentId, setSelectedAgentId] = useState<string>("");
   const [taskInput, setTaskInput] = useState<string>("");
+  const [projectPath, setProjectPath] = useState<string | null>(null);
   const { results, isRunning, error, runTask, cancelTask, clearResults } = useTaskRunner();
 
-  const selectedAgent = agents.find((a) => a.id === selectedAgentId);
+  const visibleAgents = agents.filter(
+    (a) =>
+      !a.scope || a.scope === "global" ||
+      (a.scope === "project" && a.projectPath === projectPath)
+  );
+
+  const selectedAgent = visibleAgents.find((a) => a.id === selectedAgentId);
+
+  useEffect(() => {
+    if (selectedAgentId && !visibleAgents.find((a) => a.id === selectedAgentId)) {
+      setSelectedAgentId("");
+    }
+  }, [projectPath]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedAgent || !taskInput.trim() || isRunning) return;
-    await runTask(selectedAgent, taskInput.trim());
+    await runTask(selectedAgent, taskInput.trim(), projectPath);
     setTaskInput("");
   };
 
@@ -49,6 +63,10 @@ export function TaskRunner({ agents }: TaskRunnerProps): React.JSX.Element {
         </div>
       )}
 
+      <div className="mb-4">
+        <ProjectPathSelector value={projectPath} onChange={setProjectPath} />
+      </div>
+
       <form onSubmit={handleSubmit} className="space-y-4 mb-6">
         <div>
           <Label>Agent</Label>
@@ -57,7 +75,7 @@ export function TaskRunner({ agents }: TaskRunnerProps): React.JSX.Element {
               <SelectValue placeholder="Select an agent..." />
             </SelectTrigger>
             <SelectContent>
-              {agents.map((agent) => (
+              {visibleAgents.map((agent) => (
                 <SelectItem key={agent.id} value={agent.id}>
                   <div className="flex items-center gap-2">
                     <span
@@ -70,9 +88,11 @@ export function TaskRunner({ agents }: TaskRunnerProps): React.JSX.Element {
               ))}
             </SelectContent>
           </Select>
-          {agents.length === 0 && (
+          {visibleAgents.length === 0 && (
             <p className="text-xs text-muted-foreground mt-1">
-              No agents available. Create one in the My Agents tab first.
+              {agents.length === 0
+                ? "No agents available. Create one in the My Agents tab first."
+                : "No agents for this project. Create a project agent or select a different directory."}
             </p>
           )}
         </div>

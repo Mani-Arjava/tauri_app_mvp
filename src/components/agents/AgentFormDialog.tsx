@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { Globe, FolderOpen } from "lucide-react";
 import type { AgentConfig, McpServerConfig } from "@/types/agent";
 import {
   Dialog,
@@ -37,6 +38,8 @@ interface AgentFormDialogProps {
   onOpenChange: (open: boolean) => void;
   agent?: AgentConfig;
   onSave: (config: Omit<AgentConfig, "id" | "createdAt"> | AgentConfig) => Promise<void>;
+  initialScope?: "global" | "project";
+  initialProjectPath?: string | null;
 }
 
 function emptyForm(): FormState {
@@ -66,6 +69,8 @@ export function AgentFormDialog({
   onOpenChange,
   agent,
   onSave,
+  initialScope = "global",
+  initialProjectPath = null,
 }: AgentFormDialogProps): React.JSX.Element {
   const [form, setForm] = useState<FormState>(emptyForm());
   const [isSaving, setIsSaving] = useState(false);
@@ -94,6 +99,8 @@ export function AgentFormDialog({
 
     setIsSaving(true);
     try {
+      const scope = agent?.scope ?? initialScope;
+      const projectPath = agent?.projectPath ?? initialProjectPath;
       const config = {
         ...(agent ? { id: agent.id, createdAt: agent.createdAt } : {}),
         name: form.name.trim(),
@@ -103,6 +110,8 @@ export function AgentFormDialog({
         mcpServers: form.mcpServers,
         color: form.color,
         systemPrompt: form.systemPrompt.trim(),
+        scope,
+        projectPath,
       };
       await onSave(config as Omit<AgentConfig, "id" | "createdAt"> | AgentConfig);
       onOpenChange(false);
@@ -116,6 +125,25 @@ export function AgentFormDialog({
       <DialogContent className="max-w-lg max-h-[85vh] flex flex-col">
         <DialogHeader>
           <DialogTitle>{agent ? "Edit Agent" : "Create Agent"}</DialogTitle>
+          {(() => {
+            const displayScope = agent?.scope ?? initialScope;
+            const displayPath = agent?.projectPath ?? initialProjectPath;
+            return (
+              <div className="flex items-center gap-1.5 text-xs text-muted-foreground mt-1">
+                {displayScope === "project" && displayPath ? (
+                  <>
+                    <FolderOpen className="h-3.5 w-3.5 shrink-0" />
+                    <span className="font-mono truncate max-w-[300px]">{displayPath}</span>
+                  </>
+                ) : (
+                  <>
+                    <Globe className="h-3.5 w-3.5 shrink-0" />
+                    <span>Global agent</span>
+                  </>
+                )}
+              </div>
+            );
+          })()}
         </DialogHeader>
 
         <div className="overflow-y-auto max-h-[65vh] -mx-6 px-6">

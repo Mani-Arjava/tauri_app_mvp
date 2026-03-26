@@ -101,6 +101,7 @@ async fn send_notification(
 pub async fn acp_initialize(
     mcp_servers: Option<Vec<Value>>,
     model: Option<String>,
+    cwd: Option<String>,
     state: State<'_, AcpState>,
     app: AppHandle,
 ) -> Result<(), String> {
@@ -201,15 +202,20 @@ pub async fn acp_initialize(
         .map_err(|e| format!("initialize failed: {}", e))?;
 
     // 4. Send `session/new` request
+    let resolved_cwd = cwd
+        .filter(|s| !s.trim().is_empty())
+        .unwrap_or_else(|| {
+            std::env::var("HOME")
+                .or_else(|_| std::env::var("USERPROFILE"))
+                .unwrap_or_else(|_| "/tmp".to_string())
+        });
     let rx = send_request(
         &stdin,
         &pending,
         &next_id,
         "session/new",
         Some(serde_json::json!({
-            "cwd": std::env::var("HOME")
-                .or_else(|_| std::env::var("USERPROFILE"))
-                .unwrap_or_else(|_| "/tmp".to_string()),
+            "cwd": resolved_cwd,
             "mcpServers": mcp_servers.clone().unwrap_or_default()
         })),
     )

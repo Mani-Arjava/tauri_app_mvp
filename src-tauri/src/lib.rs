@@ -7,6 +7,7 @@ mod agents;
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
+        .plugin(tauri_plugin_dialog::init())
         .manage(acp::state::AcpState::new())
         .invoke_handler(tauri::generate_handler![
             acp::commands::acp_initialize,
@@ -17,6 +18,7 @@ pub fn run() {
             agents::commands::agent_create,
             agents::commands::agent_update,
             agents::commands::agent_delete,
+            agents::commands::agent_list_for_project,
         ])
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::Destroyed = event {
