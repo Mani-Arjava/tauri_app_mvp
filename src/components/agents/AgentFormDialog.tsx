@@ -18,7 +18,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { McpServerFields } from "./McpServerFields";
 
@@ -119,7 +118,7 @@ export function AgentFormDialog({
           <DialogTitle>{agent ? "Edit Agent" : "Create Agent"}</DialogTitle>
         </DialogHeader>
 
-        <ScrollArea className="flex-1 -mx-6 px-6">
+        <div className="overflow-y-auto max-h-[65vh] -mx-6 px-6">
           <form id="agent-form" onSubmit={handleSubmit} className="space-y-4 pb-4">
             <div>
               <Label htmlFor="name">Name</Label>
@@ -202,7 +201,7 @@ export function AgentFormDialog({
               onChange={(servers) => setForm((f) => ({ ...f, mcpServers: servers }))}
             />
           </form>
-        </ScrollArea>
+        </div>
 
         <DialogFooter>
           <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
