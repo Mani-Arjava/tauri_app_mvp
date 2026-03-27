@@ -16,6 +16,7 @@ pub fn run() {
             acp::commands::acp_send_prompt,
             acp::commands::acp_cancel,
             acp::commands::acp_shutdown,
+            acp::commands::acp_is_active,
             agents::commands::agent_list,
             agents::commands::agent_create,
             agents::commands::agent_update,

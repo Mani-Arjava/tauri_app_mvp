@@ -42,7 +42,7 @@ export function ProjectDetail({
   const [selectedAgentId, setSelectedAgentId] = useState("");
   const [taskInput, setTaskInput] = useState("");
 
-  const { results, isRunning, error, runTask, cancelTask, clearResults } = useTaskRunner(projectPath);
+  const { results, isRunning, error, runTask, cancelTask, clearResults, resetSession } = useTaskRunner(projectPath);
 
   const projectAgents = agents.filter(
     (a) => a.scope === "project" && a.projectPath === projectPath
@@ -183,9 +183,19 @@ export function ProjectDetail({
                   Cancel
                 </Button>
               ) : (
-                <Button type="submit" disabled={!selectedAgent || !taskInput.trim()}>
-                  Run Task
-                </Button>
+                <>
+                  <Button type="submit" disabled={!selectedAgent || !taskInput.trim()}>
+                    Run Task
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    disabled={!selectedAgent}
+                    onClick={resetSession}
+                  >
+                    New Session
+                  </Button>
+                </>
               )}
             </div>
           </form>

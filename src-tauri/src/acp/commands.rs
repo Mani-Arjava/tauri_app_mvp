@@ -136,6 +136,77 @@ pub async fn acp_initialize(
     //         .map_err(|e| format!("Failed to start claude-code-acp-rs: {}", e))?
     // } else { ... }
 
+    // Write settings to {cwd}/.claude/settings.local.json before spawning.
+    //
+    // Two things are written:
+    //   1. permissions.allow — broad allowlist so Claude Code's PreToolUse hooks don't
+    //      block file operations or bash commands (Layer 2 of Claude Code's permission system).
+    //   2. mcpServers — ACP@0.1.1 rejects non-empty mcpServers in session/new (-32600),
+    //      so we register them via the settings file instead.
+    if let Some(ref project_cwd) = cwd {
+        if !project_cwd.trim().is_empty() {
+            let claude_dir = std::path::PathBuf::from(project_cwd.trim()).join(".claude");
+            let settings_path = claude_dir.join("settings.local.json");
+
+            let mut settings: serde_json::Map<String, Value> = settings_path
+                .exists()
+                .then(|| std::fs::read_to_string(&settings_path).ok())
+                .flatten()
+                .and_then(|s| serde_json::from_str(&s).ok())
+                .unwrap_or_default();
+
+            // Always grant broad permissions so Claude can operate autonomously.
+            settings.insert(
+                "permissions".to_string(),
+                serde_json::json!({
+                    "allow": [
+                        "Bash(*)",
+                        "Write(*)",
+                        "Edit(*)",
+                        "Read(*)",
+                        "Glob(*)",
+                        "Grep(*)",
+                        "MultiEdit(*)"
+                    ]
+                }),
+            );
+
+            // Write MCP servers when the agent has any configured.
+            if let Some(servers) = &mcp_servers {
+                if !servers.is_empty() {
+                    let mut mcp_obj = serde_json::Map::new();
+                    for server in servers {
+                        if let Some(name) = server.get("name").and_then(|v| v.as_str()) {
+                            let mut entry = serde_json::Map::new();
+                            entry.insert("type".to_string(), Value::String("stdio".to_string()));
+                            if let Some(cmd_str) = server.get("command").and_then(|v| v.as_str()) {
+                                entry.insert(
+                                    "command".to_string(),
+                                    Value::String(cmd_str.to_string()),
+                                );
+                            }
+                            if let Some(args) = server.get("args").and_then(|v| v.as_array()) {
+                                entry.insert("args".to_string(), Value::Array(args.clone()));
+                            }
+                            if let Some(env) = server.get("env").and_then(|v| v.as_object()) {
+                                if !env.is_empty() {
+                                    entry.insert("env".to_string(), Value::Object(env.clone()));
+                                }
+                            }
+                            mcp_obj.insert(name.to_string(), Value::Object(entry));
+                        }
+                    }
+                    settings.insert("mcpServers".to_string(), Value::Object(mcp_obj));
+                }
+            }
+
+            if let Ok(json) = serde_json::to_string_pretty(&Value::Object(settings)) {
+                let _ = std::fs::create_dir_all(&claude_dir);
+                let _ = std::fs::write(&settings_path, json);
+            }
+        }
+    }
+
     let preload = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("acp-preload.cjs");
     let mut cmd = Command::new("npx");
@@ -209,30 +280,9 @@ pub async fn acp_initialize(
                 .or_else(|_| std::env::var("USERPROFILE"))
                 .unwrap_or_else(|_| "/tmp".to_string())
         });
-    // Build mcpServers array; convert env from {KEY:VAL} object to [{name,value}] array
-    // (claude-code-acp Zod schema requires env as Array<{name,value}>, not a plain object)
-    let mcp_array: Vec<Value> = mcp_servers
-        .unwrap_or_default()
-        .into_iter()
-        .map(|server| {
-            let name = server.get("name").and_then(|v| v.as_str()).unwrap_or("").to_string();
-            let command = server.get("command").and_then(|v| v.as_str()).unwrap_or("").to_string();
-            let args: Vec<Value> = server.get("args")
-                .and_then(|v| v.as_array())
-                .cloned()
-                .unwrap_or_default();
-            let env: Vec<Value> = server.get("env")
-                .and_then(|v| v.as_object())
-                .map(|obj| {
-                    obj.iter()
-                        .map(|(k, v)| serde_json::json!({"name": k, "value": v.as_str().unwrap_or("")}))
-                        .collect()
-                })
-                .unwrap_or_default();
-            serde_json::json!({ "name": name, "command": command, "args": args, "env": env })
-        })
-        .collect();
-
+    // session/new: pass empty mcpServers array.
+    // ACP@0.1.1 throws -32600 for non-empty arrays; MCP servers are loaded from
+    // {cwd}/.claude/settings.local.json written above instead.
     let rx = send_request(
         &stdin,
         &pending,
@@ -240,7 +290,7 @@ pub async fn acp_initialize(
         "session/new",
         Some(serde_json::json!({
             "cwd": resolved_cwd,
-            "mcpServers": mcp_array
+            "mcpServers": []
         })),
     )
     .await?;
@@ -350,6 +400,17 @@ pub async fn acp_send_prompt(
         }
     }
 }
+
+#[tauri::command]
+pub async fn acp_is_active(state: State<'_, AcpState>) -> Result<bool, String> {
+    // Check that the reader task is still running — if the process exited, is_finished()
+    // returns true even though AcpInner is still set in state.
+    let guard = state.inner.read().await;
+    Ok(guard
+        .as_ref()
+        .map_or(false, |inner| !inner.reader_handle.is_finished()))
+}
+
 
 #[tauri::command]
 pub async fn acp_cancel(state: State<'_, AcpState>) -> Result<(), String> {

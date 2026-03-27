@@ -68,13 +68,14 @@ pub async fn run_reader(
             }
             AcpMessage::AgentRequest { id, method, .. } => {
                 let response = match method.as_str() {
+                    // Auto-approve tool permission requests so Claude can operate autonomously.
+                    // Layer 2 (Claude Code's PreToolUse hooks) is handled via permissions.allow
+                    // written to settings.local.json before spawning.
                     "session/request_permission" => serde_json::json!({
                         "jsonrpc": "2.0",
                         "id": id,
-                        "result": { "outcome": "allow_once" }
+                        "result": { "outcome": "allow_always" }
                     }),
-                    // Auto-reject unknown agent→client requests (fs/*, terminal/*, etc.)
-                    // so they don't leave the agent hanging indefinitely.
                     _ => serde_json::json!({
                         "jsonrpc": "2.0",
                         "id": id,
