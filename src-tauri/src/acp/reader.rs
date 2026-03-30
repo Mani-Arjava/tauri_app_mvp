@@ -7,15 +7,19 @@ use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::process::{ChildStdin, ChildStdout};
 use tokio::sync::{oneshot, Mutex};
 
-use super::types::{AcpMessage, ChatChunkEvent, JsonRpcIncoming};
+use super::types::{AcpDisconnectedEvent, AcpMessage, ChatChunkEvent, JsonRpcIncoming};
 
 /// Background task: reads JSON-RPC lines from the agent's stdout and dispatches them.
 ///
 /// - **Response / ErrorResponse** → completes the matching oneshot in `pending`
 /// - **Notification `session/update`** → extracts text chunks → emits `acp:message-chunk`
-/// - **AgentRequest `session/request_permission`** → auto-rejects by writing response to stdin
+/// - **AgentRequest `session/request_permission`** → auto-approves by writing response to stdin
 /// - On stdout close → emits `acp:disconnected`
+///
+/// `session_key` is included in all emitted events so the frontend can route chunks
+/// to the correct agent. Single-agent commands use `"__single__"` as the key.
 pub async fn run_reader(
+    session_key: String,
     stdout: ChildStdout,
     stdin: Arc<Mutex<ChildStdin>>,
     pending: Arc<Mutex<HashMap<u64, oneshot::Sender<Result<Value, String>>>>>,
@@ -58,6 +62,7 @@ pub async fn run_reader(
                             let _ = app_handle.emit(
                                 "acp:message-chunk",
                                 ChatChunkEvent {
+                                    session_key: session_key.clone(),
                                     text,
                                     done: false,
                                 },
@@ -92,7 +97,12 @@ pub async fn run_reader(
     }
 
     // stdout closed — agent exited
-    let _ = app_handle.emit("acp:disconnected", ());
+    let _ = app_handle.emit(
+        "acp:disconnected",
+        AcpDisconnectedEvent {
+            session_key: session_key.clone(),
+        },
+    );
 }
 
 /// Extract text from a `session/update` notification's params.

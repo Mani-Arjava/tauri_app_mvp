@@ -10,8 +10,10 @@ use tokio::process::{ChildStdin, Command};
 use tokio::sync::{oneshot, Mutex};
 
 use super::reader::run_reader;
-use super::state::{AcpInner, AcpState};
+use super::state::{AcpInner, AcpState, SINGLE_SESSION_KEY};
 use super::types::ChatChunkEvent;
+
+// ─── Low-level JSON-RPC helpers ───────────────────────────────────────────────
 
 /// Write a JSON-RPC request to stdin and return a oneshot receiver for the response.
 async fn send_request(
@@ -97,44 +99,25 @@ async fn send_notification(
     Ok(())
 }
 
-#[tauri::command]
-pub async fn acp_initialize(
+// ─── Shared init/prompt/shutdown logic ───────────────────────────────────────
+
+/// Spawn a new ACP session and store it under `session_key`.
+/// No-op if a session with this key already exists.
+async fn do_acp_init(
+    session_key: String,
     mcp_servers: Option<Vec<Value>>,
     model: Option<String>,
     cwd: Option<String>,
-    state: State<'_, AcpState>,
-    app: AppHandle,
+    state: &AcpState,
+    app: &AppHandle,
 ) -> Result<(), String> {
-    // Prevent double-init
+    // Prevent double-init for this session key
     {
-        let guard = state.inner.read().await;
-        if guard.is_some() {
+        let guard = state.sessions.read().await;
+        if guard.contains_key(&session_key) {
             return Ok(());
         }
     }
-
-    // 1. Spawn claude-code-acp via Claude Code subscription auth.
-    //
-    // NOTE: API key path is commented out — re-enable when claude-code-acp-rs
-    // model selection is verified. With subscription auth the `model` field in
-    // session/new is ignored; Claude Code uses its own default model.
-    //
-    // To re-enable API key path:
-    //   1. Add ANTHROPIC_API_KEY to src-tauri/.env
-    //   2. Install: cargo install claude-code-acp-rs
-    //   3. Uncomment the block below and wrap in if/else on ANTHROPIC_API_KEY
-    //
-    // let env_path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(".env");
-    // let _ = dotenvy::from_path(&env_path);
-    // if let Ok(api_key) = std::env::var("ANTHROPIC_API_KEY") {
-    //     Command::new("claude-code-acp-rs")
-    //         .env("ANTHROPIC_API_KEY", &api_key)
-    //         .stdin(Stdio::piped())
-    //         .stdout(Stdio::piped())
-    //         .stderr(Stdio::inherit())
-    //         .spawn()
-    //         .map_err(|e| format!("Failed to start claude-code-acp-rs: {}", e))?
-    // } else { ... }
 
     // Write settings to {cwd}/.claude/settings.local.json before spawning.
     //
@@ -216,7 +199,6 @@ pub async fn acp_initialize(
         .stdout(Stdio::piped())
         .stderr(Stdio::inherit());
 
-    // Pass model via ANTHROPIC_MODEL env var (official: code.claude.com/docs/en/model-config)
     if let Some(m) = model.as_deref().filter(|s| !s.trim().is_empty()) {
         cmd.env("ANTHROPIC_MODEL", m);
     }
@@ -243,15 +225,16 @@ pub async fn acp_initialize(
         Arc::new(Mutex::new(HashMap::new()));
     let next_id = AtomicU64::new(1);
 
-    // 2. Start the background reader task
+    // Start the background reader task — passes session_key so events are tagged
     let reader_handle = tokio::spawn(run_reader(
+        session_key.clone(),
         stdout,
         Arc::clone(&stdin),
         Arc::clone(&pending),
         app.clone(),
     ));
 
-    // 3. Send `initialize` request
+    // Send `initialize` request
     let rx = send_request(
         &stdin,
         &pending,
@@ -272,7 +255,7 @@ pub async fn acp_initialize(
         .map_err(|_| "Reader task dropped before initialize response".to_string())?
         .map_err(|e| format!("initialize failed: {}", e))?;
 
-    // 4. Send `session/new` request
+    // Send `session/new` request
     let resolved_cwd = cwd
         .filter(|s| !s.trim().is_empty())
         .unwrap_or_else(|| {
@@ -280,9 +263,8 @@ pub async fn acp_initialize(
                 .or_else(|_| std::env::var("USERPROFILE"))
                 .unwrap_or_else(|_| "/tmp".to_string())
         });
-    // session/new: pass empty mcpServers array.
-    // ACP@0.1.1 throws -32600 for non-empty arrays; MCP servers are loaded from
-    // {cwd}/.claude/settings.local.json written above instead.
+
+    // ACP@0.1.1 throws -32600 for non-empty mcpServers; load from settings.local.json instead.
     let rx = send_request(
         &stdin,
         &pending,
@@ -306,7 +288,6 @@ pub async fn acp_initialize(
         .ok_or("session/new response missing sessionId")?
         .to_string();
 
-    // 5. Store the inner state
     let inner = AcpInner {
         child,
         stdin,
@@ -316,21 +297,23 @@ pub async fn acp_initialize(
         reader_handle,
     };
 
-    *state.inner.write().await = Some(inner);
-
+    state.sessions.write().await.insert(session_key, inner);
     Ok(())
 }
 
-#[tauri::command]
-pub async fn acp_send_prompt(
+/// Send a prompt on an existing session and await the full response.
+/// Emits `acp:message-chunk` events (tagged with session_key) while streaming.
+async fn do_send_prompt(
+    session_key: &str,
     message: String,
-    state: State<'_, AcpState>,
-    app: AppHandle,
+    state: &AcpState,
+    app: &AppHandle,
 ) -> Result<(), String> {
-    // Grab references while holding read lock briefly
     let (stdin, pending, request_id, session_id) = {
-        let guard = state.inner.read().await;
-        let inner = guard.as_ref().ok_or("ACP not initialized")?;
+        let guard = state.sessions.read().await;
+        let inner = guard
+            .get(session_key)
+            .ok_or_else(|| format!("ACP session '{}' not found", session_key))?;
         (
             Arc::clone(&inner.stdin),
             Arc::clone(&inner.pending),
@@ -339,7 +322,6 @@ pub async fn acp_send_prompt(
         )
     };
 
-    // Build and send the session/prompt request
     let msg = serde_json::json!({
         "jsonrpc": "2.0",
         "id": request_id,
@@ -371,51 +353,70 @@ pub async fn acp_send_prompt(
             .map_err(|e| format!("Failed to flush prompt: {}", e))?;
     }
 
-    // Await the final response — reader emits streaming chunks as events meanwhile
     let result = rx
         .await
         .map_err(|_| "Reader task dropped before prompt response".to_string())?;
 
-    match result {
-        Ok(_) => {
-            // Emit done event
-            let _ = app.emit(
-                "acp:message-chunk",
-                ChatChunkEvent {
-                    text: String::new(),
-                    done: true,
-                },
-            );
-            Ok(())
-        }
-        Err(e) => {
-            let _ = app.emit(
-                "acp:message-chunk",
-                ChatChunkEvent {
-                    text: String::new(),
-                    done: true,
-                },
-            );
-            Err(e)
-        }
+    // Emit done chunk (tagged with session_key) so frontend listeners know this session finished.
+    let _ = app.emit(
+        "acp:message-chunk",
+        ChatChunkEvent {
+            session_key: session_key.to_string(),
+            text: String::new(),
+            done: true,
+        },
+    );
+
+    result.map(|_| ()).map_err(|e| e)
+}
+
+/// Shut down and remove a session from the map.
+async fn do_shutdown(session_key: &str, state: &AcpState) -> Result<(), String> {
+    let mut guard = state.sessions.write().await;
+    if let Some(mut inner) = guard.remove(session_key) {
+        inner.reader_handle.abort();
+        drop(inner.stdin);
+        let _ = inner.child.kill().await;
     }
+    Ok(())
+}
+
+// ─── Single-agent commands (backward-compatible) ──────────────────────────────
+
+#[tauri::command]
+pub async fn acp_initialize(
+    mcp_servers: Option<Vec<Value>>,
+    model: Option<String>,
+    cwd: Option<String>,
+    state: State<'_, AcpState>,
+    app: AppHandle,
+) -> Result<(), String> {
+    do_acp_init(SINGLE_SESSION_KEY.to_string(), mcp_servers, model, cwd, &state, &app).await
+}
+
+#[tauri::command]
+pub async fn acp_send_prompt(
+    message: String,
+    state: State<'_, AcpState>,
+    app: AppHandle,
+) -> Result<(), String> {
+    do_send_prompt(SINGLE_SESSION_KEY, message, &state, &app).await
 }
 
 #[tauri::command]
 pub async fn acp_is_active(state: State<'_, AcpState>) -> Result<bool, String> {
-    // Check that the reader task is still running — if the process exited, is_finished()
-    // returns true even though AcpInner is still set in state.
-    let guard = state.inner.read().await;
+    let guard = state.sessions.read().await;
     Ok(guard
-        .as_ref()
+        .get(SINGLE_SESSION_KEY)
         .map_or(false, |inner| !inner.reader_handle.is_finished()))
 }
 
-
 #[tauri::command]
 pub async fn acp_cancel(state: State<'_, AcpState>) -> Result<(), String> {
-    let guard = state.inner.read().await;
-    let inner = guard.as_ref().ok_or("ACP not initialized")?;
+    let guard = state.sessions.read().await;
+    let inner = guard
+        .get(SINGLE_SESSION_KEY)
+        .ok_or("ACP not initialized")?;
 
     send_notification(
         &inner.stdin,
@@ -429,14 +430,48 @@ pub async fn acp_cancel(state: State<'_, AcpState>) -> Result<(), String> {
 
 #[tauri::command]
 pub async fn acp_shutdown(state: State<'_, AcpState>) -> Result<(), String> {
-    let mut guard = state.inner.write().await;
-    if let Some(mut inner) = guard.take() {
-        // Abort the reader task
-        inner.reader_handle.abort();
-        // Drop stdin to signal the agent to exit
-        drop(inner.stdin);
-        // Kill the child process
-        let _ = inner.child.kill().await;
-    }
-    Ok(())
+    do_shutdown(SINGLE_SESSION_KEY, &state).await
+}
+
+// ─── Multi-session commands (pipeline support) ────────────────────────────────
+
+#[tauri::command]
+pub async fn acp_initialize_session(
+    session_key: String,
+    mcp_servers: Option<Vec<Value>>,
+    model: Option<String>,
+    cwd: Option<String>,
+    state: State<'_, AcpState>,
+    app: AppHandle,
+) -> Result<(), String> {
+    do_acp_init(session_key, mcp_servers, model, cwd, &state, &app).await
+}
+
+#[tauri::command]
+pub async fn acp_send_prompt_session(
+    session_key: String,
+    message: String,
+    state: State<'_, AcpState>,
+    app: AppHandle,
+) -> Result<(), String> {
+    do_send_prompt(&session_key, message, &state, &app).await
+}
+
+#[tauri::command]
+pub async fn acp_is_active_session(
+    session_key: String,
+    state: State<'_, AcpState>,
+) -> Result<bool, String> {
+    let guard = state.sessions.read().await;
+    Ok(guard
+        .get(&session_key)
+        .map_or(false, |inner| !inner.reader_handle.is_finished()))
+}
+
+#[tauri::command]
+pub async fn acp_shutdown_session(
+    session_key: String,
+    state: State<'_, AcpState>,
+) -> Result<(), String> {
+    do_shutdown(&session_key, &state).await
 }

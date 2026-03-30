@@ -7,20 +7,23 @@ use tokio::process::{Child, ChildStdin};
 use tokio::sync::{oneshot, Mutex, RwLock};
 use tokio::task::JoinHandle;
 
-/// Tauri managed state — wraps an optional active ACP session.
+/// Session key used by the single-agent commands (acp_initialize, acp_send_prompt, etc.)
+pub const SINGLE_SESSION_KEY: &str = "__single__";
+
+/// Tauri managed state — holds a map of active ACP sessions keyed by session_key.
 pub struct AcpState {
-    pub inner: Arc<RwLock<Option<AcpInner>>>,
+    pub sessions: Arc<RwLock<HashMap<String, AcpInner>>>,
 }
 
 impl AcpState {
     pub fn new() -> Self {
         Self {
-            inner: Arc::new(RwLock::new(None)),
+            sessions: Arc::new(RwLock::new(HashMap::new())),
         }
     }
 }
 
-/// Holds state for the persistent ACP subprocess.
+/// Holds state for a single ACP subprocess.
 pub struct AcpInner {
     /// The long-running `claude-code-acp` child process.
     pub child: Child,

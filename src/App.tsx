@@ -3,6 +3,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { AgentList } from "@/components/agents/AgentList";
 import { ProjectList } from "@/components/projects/ProjectList";
 import { ProjectDetail } from "@/components/projects/ProjectDetail";
+import { PipelineList } from "@/components/pipelines/PipelineList";
 import { useAgents } from "@/hooks/useAgents";
 import { useProjects } from "@/hooks/useProjects";
 
@@ -38,6 +39,7 @@ export function App(): React.JSX.Element {
             <TabsTrigger value="projects" onClick={() => setSelectedProject(null)}>
               Projects
             </TabsTrigger>
+            <TabsTrigger value="pipelines">Pipelines</TabsTrigger>
           </TabsList>
         </header>
 
@@ -72,6 +74,9 @@ export function App(): React.JSX.Element {
           )}
         </TabsContent>
 
+        <TabsContent value="pipelines" className="flex-1 overflow-auto p-6 mt-0">
+          <PipelineList agents={agents} projectPath={selectedProject} />
+        </TabsContent>
 
       </Tabs>
     </div>

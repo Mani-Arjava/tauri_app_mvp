@@ -6,6 +6,7 @@ import type { TaskResult } from "../types/task";
 import { generateId } from "../utils/id";
 
 interface ChatChunkPayload {
+  session_key: string;
   text: string;
   done: boolean;
 }
@@ -98,6 +99,8 @@ export function useTaskRunner(projectPath: string | null): UseTaskRunnerReturn {
 
   useEffect(() => {
     const unlistenChunk = listen<ChatChunkPayload>("acp:message-chunk", (event) => {
+      // Only process events from the single-agent session; pipeline sessions use their own keys.
+      if (event.payload.session_key !== "__single__") return;
       if (event.payload.done) {
         // Save the completed turn to history so future tasks include it.
         if (_pendingTurnUser !== null) {
@@ -128,7 +131,8 @@ export function useTaskRunner(projectPath: string | null): UseTaskRunnerReturn {
       }
     });
 
-    const unlistenDisconnected = listen("acp:disconnected", () => {
+    const unlistenDisconnected = listen<{ session_key: string }>("acp:disconnected", (event) => {
+      if (event.payload.session_key !== "__single__") return;
       // ACP process exited. Reset session key so the next task restarts the process.
       // Keep _turns — history is re-injected into every new prompt anyway.
       // DO NOT clear _pendingTurnUser: race condition with the done event.
