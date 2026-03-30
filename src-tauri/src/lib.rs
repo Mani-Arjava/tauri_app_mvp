@@ -51,10 +51,9 @@ pub fn run() {
                 let sessions_arc = state.sessions.clone();
                 tauri::async_runtime::spawn(async move {
                     let mut guard = sessions_arc.write().await;
-                    for (_, mut inner) in guard.drain() {
-                        inner.reader_handle.abort();
-                        drop(inner.stdin);
-                        let _ = inner.child.kill().await;
+                    for (_, inner) in guard.drain() {
+                        // Signal the background thread to shut down and kill the child process.
+                        let _ = inner.cmd_tx.try_send(acp::state::SessionCommand::Shutdown);
                     }
                 });
             }
