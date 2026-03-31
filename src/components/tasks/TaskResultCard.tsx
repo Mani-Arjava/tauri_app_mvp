@@ -1,3 +1,5 @@
+import { Streamdown } from "streamdown";
+import { mermaid } from "@streamdown/mermaid";
 import type { TaskResult } from "@/types/task";
 import { Card, CardHeader, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -36,8 +38,16 @@ export function TaskResultCard({ result }: TaskResultCardProps): React.JSX.Eleme
         {result.error ? (
           <p className="text-sm text-destructive">{result.error}</p>
         ) : (
-          <div className="text-sm whitespace-pre-wrap">
-            {result.response || (result.isStreaming ? "Thinking..." : "No response")}
+          <div className="text-sm">
+            {result.response ? (
+              <Streamdown animated isAnimating={result.isStreaming} plugins={{ mermaid }}>
+                {result.response}
+              </Streamdown>
+            ) : (
+              <span className="text-muted-foreground">
+                {result.isStreaming ? "Thinking..." : "No response"}
+              </span>
+            )}
           </div>
         )}
       </CardContent>

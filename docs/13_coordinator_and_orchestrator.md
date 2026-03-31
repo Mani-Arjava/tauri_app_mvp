@@ -234,7 +234,266 @@ This loop continues until the Orchestrator stops issuing `CALL_AGENT(...)` calls
 
 ---
 
-## 7. Where This Fits in the App Architecture
+## 7. Who Creates the Coordinator & How It Knows Your Agents
+
+### There Is No "Coordinator Agent"
+
+This is the most important thing to understand: **there is no single Coordinator agent to create**. The coordinator is a **pipeline topology** — a specific shape of connections between your agents.
+
+Three things work together:
+
+| Role | What It Is | Who Creates It |
+|------|-----------|----------------|
+| **Specialist agents** | Regular `AgentConfig` with a focused system prompt | You (in "My Agents") |
+| **Synthesizer agent** | Regular `AgentConfig` that combines reports | You (in "My Agents") |
+| **Pipeline** | Fan-out edges connecting all specialists → synthesizer | You (in "Pipelines") |
+
+The `usePipelineRunner.ts` execution engine **is** the coordinator mechanism. It detects the fan-out topology, runs all specialists in parallel via `Promise.all`, and feeds all their outputs into the synthesizer. You don't write any coordinator logic — you just draw the right edges.
+
+---
+
+### How the Synthesizer "Knows" the Other Agents
+
+**It doesn't need to know in advance.** `buildNodePrompt()` in `src/hooks/usePipelineRunner.ts` automatically injects each upstream agent's output as a labeled context block before calling the synthesizer:
+
+```
+=== Output from [LegalAgent] ===
+[legal analysis text]
+
+=== Output from [FinancialAgent] ===
+[financial analysis text]
+
+=== Output from [MarketAgent] ===
+[market analysis text]
+
+=== Your Task ===
+[original user task]
+```
+
+The synthesizer receives all of this as its prompt. It does not need to name the upstream agents or know how many there are — it just processes whatever labeled reports arrive.
+
+---
+
+### Synthesizer System Prompt — Best Practice
+
+**Generic (reusable for any number of upstream agents, any topic):**
+
+```
+You are a synthesis agent. You will receive analysis reports from multiple specialist agents.
+Each report is labeled with the name of the agent that produced it.
+
+Your job:
+1. Read all provided reports carefully
+2. Identify key findings, points of agreement, and conflicts between them
+3. Produce a single unified conclusion with clear recommendations
+
+Synthesise everything into one coherent final answer.
+```
+
+**Task-specific (clearer structured output for a fixed domain):**
+
+```
+You are a business proposal evaluator. You will receive three specialist reports:
+a Legal risk analysis, a Financial viability analysis, and a Market opportunity analysis.
+
+Combine all three into one executive summary with:
+- Overall recommendation (Proceed / Proceed with conditions / Reject)
+- Top 3 risks and Top 3 opportunities
+- Suggested next steps
+```
+
+**Which to use:** Generic is more reusable and works with any pipeline. Task-specific gives more structured, predictable output when the domain is fixed.
+
+---
+
+### Specialist Agent System Prompts — Best Practice
+
+Each specialist agent should be **tightly focused on one domain**:
+
+```
+You are a Legal Risk Analyst. When given a business proposal or task, identify:
+- Regulatory compliance issues
+- Contractual risks and liability exposure
+- Intellectual property concerns
+
+Output a structured legal risk report. Be concise and specific.
+```
+
+The specialist **does NOT need to know** about the other specialists or the synthesizer. It just does its job and returns output. The pipeline handles everything else.
+
+---
+
+### Step-by-Step: Create a Coordinator Setup
+
+**1. Create each specialist agent in "My Agents":**
+- Focused system prompt for one domain (Legal, Financial, Market, etc.)
+- Clear name — this appears as the label in `=== Output from [Name] ===` context blocks
+- Clear description — what domain it covers
+
+**2. Create a synthesizer agent in "My Agents":**
+- System prompt that expects multiple labeled reports as input
+- Generic phrasing — does NOT hard-code the upstream agent names
+- Name it clearly: `SynthesisAgent`, `Evaluator`, `FinalReporter`, etc.
+
+**3. Create a pipeline in "Pipelines":**
+- Add all specialist nodes + the synthesizer node
+- Draw edges: each specialist → synthesizer
+- No edges between specialists (they run in parallel)
+
+```
+LegalAgent ──┐
+              ├──→ SynthesisAgent
+FinancialAgent┤
+              │
+MarketAgent ──┘
+```
+
+**4. Run the pipeline:**
+- All specialists run simultaneously (Layer 0)
+- Synthesizer runs after all specialists finish (Layer 1)
+- Synthesizer receives all outputs automatically — no extra configuration needed
+
+---
+
+### What the Agent's `name` Field Does Here
+
+In the Coordinator pattern, each agent's `name` becomes the label in the context injection:
+
+```
+=== Output from [LegalAgent] ===
+```
+
+The synthesizer sees this label and can use it to understand the source. Name your specialist agents clearly and descriptively — it directly affects the quality of the synthesizer's context.
+
+---
+
+### Coordinator vs Orchestrator — Agent Discovery Comparison
+
+| | Coordinator | Orchestrator |
+|---|---|---|
+| How it learns about agents | Context injection — outputs arrive labeled automatically | `{{AGENT_ROSTER}}` in system prompt, injected at runtime |
+| Who decides which agents run | You (pipeline edges, fixed at design time) | Claude (at runtime, adapts to the task) |
+| Does synthesizer need agent names? | No — labels come from `buildNodePrompt` automatically | Yes — must call `CALL_AGENT(name, ...)` by name |
+| Setup | Create agents + pipeline topology | Create agents + one Orchestrator agent |
+| Already built? | Yes — `usePipelineRunner.ts` | Future implementation |
+
+---
+
+## 8. Who Creates the Orchestrator & How It Knows Your Agents
+
+### Who Creates the Orchestrator
+
+The Orchestrator is **not a built-in component of the app**. You create it yourself as a regular agent in the "My Agents" tab — the same way you create any other `AgentConfig`. The only difference is its system prompt: instead of doing a specific job, it describes the available sub-agents and tells Claude how to coordinate them.
+
+No special UI, no special Rust code — just a well-written system prompt.
+
+---
+
+### Two Approaches for Telling the Orchestrator About Your Agents
+
+#### Option A — Static (simple, manual)
+
+When creating the Orchestrator agent in the UI, you type the names and descriptions of all your other agents directly into the system prompt:
+
+```
+You are an Orchestrator agent. You have access to these sub-agents:
+- CodeReviewer: reviews TypeScript/React code for bugs and best practices
+- DocWriter: writes clear Markdown documentation for any function or module
+- TestGenerator: generates Jest unit tests for TypeScript functions
+
+When given a task:
+1. Analyse what is needed
+2. Decide which agents to call and in what order
+3. Issue calls using: CALL_AGENT(AgentName, "your instruction")
+4. Wait for each result before deciding the next step
+5. Return a final synthesised answer
+```
+
+**Drawback:** Every time you add, remove, or rename an agent, you must manually edit the Orchestrator's system prompt.
+
+---
+
+#### Option B — Dynamic Injection (Best Practice)
+
+Store only a **template** in the Orchestrator's system prompt with the placeholder `{{AGENT_ROSTER}}`. The runner replaces this placeholder with the live agent list at runtime, before the first Claude call.
+
+**Orchestrator system prompt stored in the app:**
+
+```
+You are an Orchestrator agent.
+
+{{AGENT_ROSTER}}
+
+When given a task:
+1. Analyse what is needed
+2. Decide which agents to call and in what order
+3. Issue calls using: CALL_AGENT(AgentName, "your instruction")
+4. Wait for each result before deciding the next step
+5. Return a final synthesised answer when done
+```
+
+**`useOrchestratorRunner` builds and injects the roster at runtime (`src/utils/orchestrator.ts`):**
+
+```typescript
+function buildAgentRoster(agents: AgentConfig[], orchestratorId: string): string {
+  const subAgents = agents.filter(a => a.id !== orchestratorId);
+  const lines = subAgents.map(a => {
+    // Use description if set, fall back to first line of systemPrompt
+    const desc = a.description.trim() || a.systemPrompt.split('\n')[0].trim();
+    return `- ${a.name}: ${desc}`;
+  });
+  return `You have access to these sub-agents:\n${lines.join('\n')}`;
+}
+
+// In useOrchestratorRunner, before the first ACP call:
+const finalSystemPrompt = orchestrator.systemPrompt.replace(
+  '{{AGENT_ROSTER}}',
+  buildAgentRoster(agents, orchestrator.id)
+);
+```
+
+**Why this is best practice:**
+
+| Benefit | Explanation |
+|---------|------------|
+| Auto-updates | Any new agent you create automatically appears in the roster on the next run |
+| No manual edits | You never need to touch the Orchestrator's system prompt after setup |
+| Works for any scale | One Orchestrator handles 3 agents or 30 agents without changes |
+| Single source of truth | Agent names and descriptions live in `AgentConfig`, not repeated in the prompt |
+
+---
+
+### Which `AgentConfig` Fields Are Used
+
+From `src/types/agent.ts`:
+
+| Field | Role in Orchestration |
+|-------|-----------------------|
+| `id` | Excludes the Orchestrator itself from its own roster |
+| `name` | What the Orchestrator uses in `CALL_AGENT(name, ...)` — **must be unique** |
+| `description` | Shown in the roster — keep it short and action-oriented |
+| `systemPrompt` | First line used as fallback if `description` is empty |
+
+**Important:** The agent's `name` in `AgentConfig` must exactly match the name used in `CALL_AGENT(...)`. If your agent is named `"Code Reviewer"` but the Orchestrator calls `CALL_AGENT(CodeReviewer, ...)`, it will fail to find the agent.
+
+---
+
+### Step-by-Step: Create Your Orchestrator
+
+1. Go to **My Agents → Create Agent**
+2. **Name:** `Orchestrator`
+3. **Description:** `Routes tasks to the right sub-agents and synthesises the results`
+4. **System Prompt:** paste the Option B template with `{{AGENT_ROSTER}}`
+5. **Save** — it is now a standard agent in your app
+6. When `useOrchestratorRunner` runs, it replaces `{{AGENT_ROSTER}}` with the live list of all other agents automatically
+
+All of your other custom agents (CodeReviewer, DocWriter, etc.) need only two things filled in:
+- A clear **Name** (used in `CALL_AGENT`)
+- A clear **Description** (shown in the roster so the Orchestrator knows when to use them)
+
+---
+
+## 9. Where This Fits in the App Architecture
 
 ```
 Current (Static Pipeline):
@@ -265,7 +524,7 @@ The `AgentConfig` and ACP session infrastructure is already fully reusable — n
 
 ---
 
-## 8. Comparison: All Three Patterns
+## 10. Comparison: All Three Patterns
 
 ```
 Static Pipeline:
@@ -291,7 +550,7 @@ Orchestrator:
 
 ---
 
-## 9. ReAct Loop — Deeper Explanation
+## 11. ReAct Loop — Deeper Explanation
 
 ReAct stands for **Reason + Act**. It is the core mechanism that makes Orchestrators intelligent.
 
@@ -321,7 +580,7 @@ Each round the Orchestrator sees the full conversation history and decides the n
 
 ---
 
-## 10. Open Questions for Future Development
+## 12. Open Questions for Future Development
 
 1. **Max loop limit** — How many ReAct rounds before forcing termination? (prevent infinite loops)
 2. **Parallel sub-calls** — Can the Orchestrator issue multiple `CALL_AGENT` at once? (fan-out within orchestration)

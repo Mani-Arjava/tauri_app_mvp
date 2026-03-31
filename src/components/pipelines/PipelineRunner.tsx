@@ -1,4 +1,6 @@
 import { useState } from "react";
+import { Streamdown } from "streamdown";
+import { mermaid } from "@streamdown/mermaid";
 import { ArrowLeft, ArrowRight, Play, Square } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -147,7 +149,11 @@ export function PipelineRunner({ pipeline, agents, projectPath, onBack }: Pipeli
                       <p className="text-xs text-muted-foreground italic">Thinking…</p>
                     )}
                     {state.output && (
-                      <pre className="text-sm whitespace-pre-wrap font-sans">{state.output}</pre>
+                      <div className="text-sm">
+                        <Streamdown animated isAnimating={state.status === "running"} plugins={{ mermaid }}>
+                          {state.output}
+                        </Streamdown>
+                      </div>
                     )}
                     {state.status === "error" && state.error && (
                       <p className="text-xs text-destructive mt-1">{state.error}</p>
